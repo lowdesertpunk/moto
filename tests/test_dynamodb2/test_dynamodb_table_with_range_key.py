@@ -445,3 +445,51 @@ def test_get_key_fields():
     table = create_table()
     kf = table.get_key_fields()
     kf.should.equal(['forum_name', 'subject'])
+
+@mock_dynamodb2
+def test_query_with_global_indexes():
+    from boto.dynamodb2.fields import GlobalAllIndex
+
+    table = Table.create('messages', schema=[
+        HashKey('subject'),
+        RangeKey('version'),
+    ], throughput={
+        'read': 10,
+        'write': 10,
+    }, global_indexes=[
+        GlobalAllIndex('topic-created_at-index',
+            parts=[
+                HashKey('topic'),
+                RangeKey('created_at', data_type='N')
+            ],
+            throughput={
+                'read': 6,
+                'write': 1
+            }
+        ),
+        GlobalAllIndex('status-created_at-index',
+            parts=[
+                HashKey('status'),
+                RangeKey('created_at', data_type='N')
+            ],
+            throughput={
+                'read': 2,
+                'write': 1
+            }
+        )
+    ])
+
+    item_data = {
+        'subject': 'Check this out!',
+        'version': '1',
+        'created_at': 0,
+        'status': 'inactive'
+    }
+    item = Item(table, item_data)
+    item.save(overwrite=True)
+
+    item['version'] = '2'
+    item.save(overwrite=True)
+
+    results = table.query(status__eq='active')
+    list(results).should.have.length_of(0)
